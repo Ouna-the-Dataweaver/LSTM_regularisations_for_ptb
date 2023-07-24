@@ -31,7 +31,7 @@ def string_to_ids(sentence: str, words_dict: dict, mode="list"):
 
 
 class WordPredictionLSTM(nn.Module):
-    def __init__(self, vocab_size, embedding_dim, hidden_dim, dropout_arr, weight_tying, padding_idx=None):
+    def __init__(self, vocab_size, embedding_dim, hidden_dim, dropout_arr, weight_tying, padding_idx=0):
         super(WordPredictionLSTM, self).__init__()
         self.embedding = nn.Embedding(vocab_size, embedding_dim, padding_idx)
 
@@ -121,7 +121,7 @@ class Trainer:
         self.weight_tying = True
 
         self.dropout_words = 0.4
-        self.dropout_emb_lstm_0 = 0.25
+        self.dropout_emb_lstm_0 = 0.15
         self.dropout_lstm_0_lstm_1 = 0.35
         self.dropout_lstm_1_lstm_2 = 0.35
         self.dropout_lstm_2_fc = 0.2
@@ -130,9 +130,9 @@ class Trainer:
         self.base_seq_len = 70
         self.learning_rate_sgd = 1
         self.learning_rate_adam = 1e-2
-        self.lr = None
+        # self.lr = None
         self.max_norm = 1.5
-        self.decay = 1e-6
+        self.decay = 1e-8
 
         self.alpha = 1
         self.beta = 2
@@ -146,12 +146,35 @@ class Trainer:
 
         # training state
         self.epochs = 0
-        self.training_history = dict()
+        self.training_history_dict = dict()
+
+        self.training_history_dict["epochs"] = []
+
+        self.training_history_dict["lr"] = []
+        self.training_history_dict["max_norm"] = []
+        self.training_history_dict["decay"] = []
+
+        self.training_history_dict["ce_loss_train"] = []
+        self.training_history_dict["L2_loss_train"] = []
+        self.training_history_dict["full_loss_train"] = []
+
+        self.training_history_dict["alpha"] = []
+        self.training_history_dict["beta"] = []
+
+        self.training_history_dict["ppl_train"] = []
+        self.training_history_dict["ppl_valid"] = []
+
+        self.training_history_dict["dp_input"] = []
+        # self.training_history_dict["dp_emb"] = []
+        self.training_history_dict["dp_emb_lstm"] = []
+        self.training_history_dict["dp_lstm_0_1"] = []
+        self.training_history_dict["dp_lstm_1_2"] = []
+        self.training_history_dict["dp_lstm_2_fc"] = []
 
     def init_train(self):
-        # self.optimizer = optim.SGD(self.model.parameters(), lr=self.learning_rate_sgd, momentum=0.7)
-        self.optimizer = optim.Adam(self.model.parameters(), lr=self.learning_rate_adam, weight_decay=self.decay)
-        self.lr = self.learning_rate_adam
+        self.optimizer = optim.SGD(self.model.parameters(), lr=self.learning_rate_sgd, momentum=0.7)
+        # self.optimizer = optim.Adam(self.model.parameters(), lr=self.learning_rate_adam, weight_decay=self.decay)
+
         self.scheduler = lr_scheduler.LinearLR(self.optimizer, start_factor=1, end_factor=1, total_iters=1)
         self.criterion = nn.CrossEntropyLoss()
 
@@ -203,7 +226,6 @@ class Trainer:
             self.max_norm = val
         if param == "base_seq_len":
             self.base_seq_len = val
-
 
     def load_dictionary(self, words_dict_path: pathlib.Path):
         words_dict = dict()
@@ -353,73 +375,79 @@ class Trainer:
         return ans
 
     def draw_graph(self, print_graphs):
-        x = []
-        ppx_valid = []
-        ppx_train = []
-        lr_history = []
-        total_loss = []
-        ce_loss = []
-        ar_tar_loss = []
-        for epoch_num in range(max(self.training_history.keys()) + 1):
-            if max(self.training_history.keys()) - epoch_num > 20:
-                pass
-                # continue
-            dict_info = self.training_history[epoch_num]
-            x.append(epoch_num)
-            lr_history.append(dict_info['lr'])
-            ppx_valid.append(dict_info['valid_ppx'])
-            ppx_train.append(dict_info['train_ppx'])
+        x = self.training_history_dict["epochs"]
+        ppl_train = self.training_history_dict["ppl_train"]
+        ppl_valid = self.training_history_dict["ppl_valid"]
 
-            total_loss_value = dict_info['train_loss_total']
-            ce_loss_value = dict_info['train_loss_ce']
-            ar_tar_loss_value = total_loss_value - ce_loss_value
+        ce_loss_train = self.training_history_dict["ce_loss_train"]
+        L2_loss_train = self.training_history_dict["L2_loss_train"]
+        full_loss_train = self.training_history_dict["full_loss_train"]
 
-            total_loss.append(total_loss_value)
-            ce_loss.append(ce_loss_value)
-            ar_tar_loss.append(ar_tar_loss_value)
+        alpha = self.training_history_dict["alpha"]
+        beta = self.training_history_dict["beta"]
+        max_norm = self.training_history_dict["max_norm"]
+        decay = self.training_history_dict["decay"]
+        lr = self.training_history_dict["lr"]
+
+        dp_input = self.training_history_dict["dp_input"]
+        dp_emb_lstm = self.training_history_dict["dp_emb_lstm"]
+        dp_lstm_0_1 = self.training_history_dict["dp_lstm_0_1"]
+        dp_lstm_1_2 = self.training_history_dict["dp_lstm_1_2"]
+        dp_lstm_2_fc = self.training_history_dict["dp_lstm_2_fc"]
 
         if print_graphs:
             plt.figure()
 
-            top_plt = plt.subplot2grid(shape=(3, 2), loc=(0, 0), colspan=2)
-            mid_plt = plt.subplot2grid(shape=(3, 2), loc=(1, 0), colspan=2)
-            bot_plt_0 = plt.subplot2grid(shape=(3, 2), loc=(2, 0))
-            bot_plt_1 = plt.subplot2grid(shape=(3, 2), loc=(2, 1))
+            latest_ppl = plt.subplot2grid(shape=(3, 3), loc=(0, 0), colspan=2)
+            dp = plt.subplot2grid(shape=(3, 3), loc=(0, 2))
 
-            mid_plt.plot(x, ppx_train, label='train')
-            mid_plt.plot(x, ppx_valid, label='valid')
+            all_ppl = plt.subplot2grid(shape=(3, 3), loc=(1, 0), colspan=2)
+            ab_norm = plt.subplot2grid(shape=(3, 3), loc=(1, 2))
 
-            mid_plt.set_ylabel("Perplexity")
-            mid_plt.set_yscale('log')
-            mid_plt.legend()
+            loss = plt.subplot2grid(shape=(3, 3), loc=(2, 0))
+            lr_dec = plt.subplot2grid(shape=(3, 3), loc=(2, 1))
+            decay_etc = plt.subplot2grid(shape=(3, 3), loc=(2, 2))
 
-            top_plt.plot(x[-7:], ppx_train[-7:], label='train')
-            top_plt.plot(x[-7:], ppx_valid[-7:], label='valid')
+            latest_ppl.plot(x[-10:], ppl_train[-10:], label='train')
+            latest_ppl.plot(x[-10:], ppl_valid[-10:], label='valid')
 
-            top_plt.set_ylabel("Perplexity")
-            # top_plt.set_yscale('log')
-            top_plt.legend()
+            dp.plot(x, dp_input, label="dp_input")
+            dp.plot(x, dp_emb_lstm, label="dp_emb_lstm")
+            dp.plot(x, dp_lstm_0_1, label="dp_lstm_0_1")
+            dp.plot(x, dp_lstm_1_2, label="dp_lstm_1_2")
+            dp.plot(x, dp_lstm_2_fc, label="dp_lstm_2_fc")
+            dp.legend(fontsize=4)
 
-            bot_plt_0.plot(x, total_loss, label='total_loss')
-            bot_plt_0.plot(x, ce_loss, label='ce_loss')
-            bot_plt_0.plot(x, ar_tar_loss, label='ar_tar_loss')
-            bot_plt_0.set_xlabel("Epoch")
-            bot_plt_0.set_yscale('log')
-            bot_plt_0.legend(fontsize=4)
+            all_ppl.plot(x, ppl_train, label='train')
+            all_ppl.plot(x, ppl_valid, label='valid')
+            all_ppl.set_yscale('log')
 
-            bot_plt_1.plot(x, lr_history, label='lr')
-            bot_plt_1.set_xlabel("Epoch")
-            bot_plt_1.legend()
+            ab_norm.plot(x, alpha, label='alpha')
+            ab_norm.plot(x, beta, label='beta')
+            ab_norm.legend()
+
+            loss.plot(x, ce_loss_train, label='ce_loss_train')
+            loss.plot(x, L2_loss_train, label='L2_loss_train')
+            loss.plot(x, full_loss_train, label='full_loss_train')
+            loss.legend(fontsize=4)
+
+            lr_dec.plot(x, lr, label='lr')
+            lr_dec.plot(x, max_norm, label='max_norm')
+            lr_dec.set_yscale('log')
+            lr_dec.legend()
+
+            decay_etc.plot(x, decay, label='decay')
+            decay_etc.legend()
 
             plt.show()
 
-        return min(ppx_valid), ppx_train[-1], ppx_valid[-1]
+        return min(ppl_valid), ppl_train[-1], ppl_valid[-1]
 
     def train(self, epoch_num: int = 1, print_train=True, print_graphs=True):
         start_time = time.time()
         for epoch in range(epoch_num):
             cur_epoch_global = self.epochs + epoch
-            self.training_history[cur_epoch_global] = dict()
+            # self.training_history[cur_epoch_global] = dict()
 
             tensor_train, tensor_target = self.generate_train_tensor(shuffle=True)
             tensor_len = tensor_train.shape[1]
@@ -466,25 +494,41 @@ class Trainer:
                 # print("batch: ", batch_idx)
                 batch_idx += 1
 
-            self.training_history[cur_epoch_global]["arr"] = train_loss_ce_arr
-
-            train_loss_ce = sum(train_loss_ce_arr) / len(train_loss_ce_arr)
-            train_ppx = math.exp(train_loss_ce)
-            train_loss_total = sum(train_loss_total_arr) / len(train_loss_total_arr)
-            self.training_history[cur_epoch_global]["train_loss_ce"] = train_loss_ce
-            self.training_history[cur_epoch_global]["train_loss_total"] = train_loss_total
-            self.training_history[cur_epoch_global]["train_ppx"] = train_ppx
+            self.training_history_dict["epochs"].append(cur_epoch_global)
 
             curr_lr = self.optimizer.param_groups[0]['lr']
-            self.training_history[cur_epoch_global]["lr"] = curr_lr
+            self.training_history_dict["lr"].append(curr_lr)
+            self.training_history_dict["max_norm"].append(self.max_norm)
+            self.training_history_dict["decay"].append(self.decay)
+
+            ce_loss_train = sum(train_loss_ce_arr) / len(train_loss_ce_arr)
+
+            full_loss_train = sum(train_loss_total_arr) / len(train_loss_total_arr)
+            L2_loss_train = full_loss_train - ce_loss_train
+
+            self.training_history_dict["ce_loss_train"].append(ce_loss_train)
+            self.training_history_dict["L2_loss_train"].append(L2_loss_train)
+            self.training_history_dict["full_loss_train"].append(full_loss_train)
+
+            train_ppl = math.exp(ce_loss_train)
+            self.training_history_dict["ppl_train"].append(train_ppl)
+
+            self.training_history_dict["alpha"].append(self.alpha)
+            self.training_history_dict["beta"].append(self.beta)
 
             # val
             self.model.eval()
             validation_loss = self.loss_on_data()
-            validation_ppx = math.exp(validation_loss)
+            validation_ppl = math.exp(validation_loss)
 
-            self.training_history[cur_epoch_global]["valid_loss"] = validation_loss
-            self.training_history[cur_epoch_global]["valid_ppx"] = validation_ppx
+            self.training_history_dict["ppl_valid"].append(validation_ppl)
+
+            self.training_history_dict["dp_input"].append(self.dropout_words)
+            # self.training_history_dict["dp_emb"].append()
+            self.training_history_dict["dp_emb_lstm"].append(self.dropout_emb_lstm_0)
+            self.training_history_dict["dp_lstm_0_1"].append(self.dropout_lstm_0_lstm_1)
+            self.training_history_dict["dp_lstm_1_2"].append(self.dropout_lstm_1_lstm_2)
+            self.training_history_dict["dp_lstm_2_fc"].append(self.dropout_lstm_2_fc)
 
             self.scheduler.step()
 

@@ -1,0 +1,1 @@
+Project of fitting LSTM on penn tree bank dataset with various regularisations. 
