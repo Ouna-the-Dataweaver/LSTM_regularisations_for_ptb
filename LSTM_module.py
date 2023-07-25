@@ -31,7 +31,7 @@ def string_to_ids(sentence: str, words_dict: dict, mode="list"):
 
 
 class WordPredictionLSTM(nn.Module):
-    def __init__(self, vocab_size, embedding_dim, hidden_dim, dropout_arr, weight_tying, padding_idx=0):
+    def __init__(self, vocab_size, embedding_dim, hidden_dim, dropout_arr, weight_tying, padding_idx=None):
         super(WordPredictionLSTM, self).__init__()
         self.embedding = nn.Embedding(vocab_size, embedding_dim, padding_idx)
 
@@ -120,22 +120,22 @@ class Trainer:
 
         self.weight_tying = True
 
-        self.dropout_words = 0.4
-        self.dropout_emb_lstm_0 = 0.15
+        self.dropout_words = 0.2
+        self.dropout_emb_lstm_0 = 0.05
         self.dropout_lstm_0_lstm_1 = 0.35
         self.dropout_lstm_1_lstm_2 = 0.35
         self.dropout_lstm_2_fc = 0.2
 
         self.batch_size = 60
         self.base_seq_len = 70
-        self.learning_rate_sgd = 1
+        self.learning_rate_sgd = 20
         self.learning_rate_adam = 1e-2
         # self.lr = None
         self.max_norm = 1.5
-        self.decay = 1e-8
+        self.decay = 1e-6
 
-        self.alpha = 1
-        self.beta = 2
+        self.alpha = 2
+        self.beta = 1
 
         self.optimizer = None
         self.scheduler = None
@@ -172,8 +172,8 @@ class Trainer:
         self.training_history_dict["dp_lstm_2_fc"] = []
 
     def init_train(self):
-        self.optimizer = optim.SGD(self.model.parameters(), lr=self.learning_rate_sgd, momentum=0.7)
-        # self.optimizer = optim.Adam(self.model.parameters(), lr=self.learning_rate_adam, weight_decay=self.decay)
+        # self.optimizer = optim.SGD(self.model.parameters(), lr=self.learning_rate_sgd, momentum=0.7)
+        self.optimizer = optim.Adam(self.model.parameters(), lr=self.learning_rate_adam, weight_decay=self.decay)
 
         self.scheduler = lr_scheduler.LinearLR(self.optimizer, start_factor=1, end_factor=1, total_iters=1)
         self.criterion = nn.CrossEntropyLoss()
@@ -226,6 +226,10 @@ class Trainer:
             self.max_norm = val
         if param == "base_seq_len":
             self.base_seq_len = val
+        if param == "decay":
+            self.optimizer.param_groups[0]['weight_decay'] = val
+            self.decay = val
+
 
     def load_dictionary(self, words_dict_path: pathlib.Path):
         words_dict = dict()
@@ -397,6 +401,7 @@ class Trainer:
 
         if print_graphs:
             plt.figure()
+            plt.rcParams.update({'font.size': 6})
 
             latest_ppl = plt.subplot2grid(shape=(3, 3), loc=(0, 0), colspan=2)
             dp = plt.subplot2grid(shape=(3, 3), loc=(0, 2))
@@ -410,6 +415,7 @@ class Trainer:
 
             latest_ppl.plot(x[-10:], ppl_train[-10:], label='train')
             latest_ppl.plot(x[-10:], ppl_valid[-10:], label='valid')
+            latest_ppl.legend()
 
             dp.plot(x, dp_input, label="dp_input")
             dp.plot(x, dp_emb_lstm, label="dp_emb_lstm")
@@ -421,6 +427,7 @@ class Trainer:
             all_ppl.plot(x, ppl_train, label='train')
             all_ppl.plot(x, ppl_valid, label='valid')
             all_ppl.set_yscale('log')
+            all_ppl.legend()
 
             ab_norm.plot(x, alpha, label='alpha')
             ab_norm.plot(x, beta, label='beta')
@@ -429,11 +436,12 @@ class Trainer:
             loss.plot(x, ce_loss_train, label='ce_loss_train')
             loss.plot(x, L2_loss_train, label='L2_loss_train')
             loss.plot(x, full_loss_train, label='full_loss_train')
+            loss.set_yscale('log')
             loss.legend(fontsize=4)
 
             lr_dec.plot(x, lr, label='lr')
-            lr_dec.plot(x, max_norm, label='max_norm')
-            lr_dec.set_yscale('log')
+            # lr_dec.plot(x, max_norm, label='max_norm')
+            # lr_dec.set_yscale('log')
             lr_dec.legend()
 
             decay_etc.plot(x, decay, label='decay')
