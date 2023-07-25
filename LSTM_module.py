@@ -121,15 +121,15 @@ class Trainer:
         self.weight_tying = True
 
         self.dropout_words = 0.2
-        self.dropout_emb_lstm_0 = 0.05
-        self.dropout_lstm_0_lstm_1 = 0.35
-        self.dropout_lstm_1_lstm_2 = 0.35
-        self.dropout_lstm_2_fc = 0.2
+        self.dropout_emb_lstm_0 = 0.15
+        self.dropout_lstm_0_lstm_1 = 0.29
+        self.dropout_lstm_1_lstm_2 = 0.31
+        self.dropout_lstm_2_fc = 0.26
 
         self.batch_size = 60
         self.base_seq_len = 70
         self.learning_rate_sgd = 20
-        self.learning_rate_adam = 1e-2
+        self.learning_rate_adam = 8e-3
         # self.lr = None
         self.max_norm = 1.5
         self.decay = 1e-6
