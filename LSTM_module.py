@@ -160,7 +160,7 @@ class Trainer:
         self.dropout_lstm_1_lstm_2 = 0.31
         self.dropout_lstm_2_fc = 0.26
 
-        self.drop_connect = 0.4
+        self.drop_connect = 0.5
 
         self.batch_size = 60
         self.base_seq_len = 70
@@ -206,6 +206,8 @@ class Trainer:
         self.training_history_dict["dp_lstm_0_1"] = []
         self.training_history_dict["dp_lstm_1_2"] = []
         self.training_history_dict["dp_lstm_2_fc"] = []
+        self.training_history_dict["drop_connect"] = []
+
 
     def init_train(self):
         # self.optimizer = optim.SGD(self.model.parameters(), lr=self.learning_rate_sgd, momentum=0.7)
@@ -434,6 +436,7 @@ class Trainer:
         dp_lstm_0_1 = self.training_history_dict["dp_lstm_0_1"]
         dp_lstm_1_2 = self.training_history_dict["dp_lstm_1_2"]
         dp_lstm_2_fc = self.training_history_dict["dp_lstm_2_fc"]
+        drop_connect = self.training_history_dict["drop_connect"]
 
         if print_graphs:
             plt.figure()
@@ -458,6 +461,7 @@ class Trainer:
             dp.plot(x, dp_lstm_0_1, label="dp_lstm_0_1")
             dp.plot(x, dp_lstm_1_2, label="dp_lstm_1_2")
             dp.plot(x, dp_lstm_2_fc, label="dp_lstm_2_fc")
+            dp.plot(x, drop_connect, label="drop_connect")
             dp.legend(fontsize=4)
 
             all_ppl.plot(x, ppl_train, label='train')
@@ -573,6 +577,7 @@ class Trainer:
             self.training_history_dict["dp_lstm_0_1"].append(self.dropout_lstm_0_lstm_1)
             self.training_history_dict["dp_lstm_1_2"].append(self.dropout_lstm_1_lstm_2)
             self.training_history_dict["dp_lstm_2_fc"].append(self.dropout_lstm_2_fc)
+            self.training_history_dict["drop_connect"].append(self.drop_connect)
 
             self.scheduler.step()
 
