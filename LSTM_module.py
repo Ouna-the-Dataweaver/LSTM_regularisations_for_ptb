@@ -504,7 +504,7 @@ class Trainer:
             batch_start = True
             train_loss_ce_arr = []
             train_loss_total_arr = []
-            print("Epoch:", epoch+1, end="_")
+            print("Epoch:", epoch+1, end=":")
             self.model.train()
             progress = [-100, 0]
             while True:
