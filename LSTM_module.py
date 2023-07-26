@@ -30,20 +30,54 @@ def string_to_ids(sentence: str, words_dict: dict, mode="list"):
     return ans
 
 
+class DropConnectLSTM(torch.nn.LSTM):
+    """
+    Customized LSTM with built in dropconnect. Based on PyTorch LSTM
+    """
+
+    def __init__(self, *args, weight_dropout=0.0, drop_bias=False, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.weight_dropout = weight_dropout
+        self.drop_bias = drop_bias
+        self.weight_hh_l0_raw = nn.Parameter(self.weight_hh_l0)
+        if self.drop_bias:
+            self.bias_hh_l0_raw = nn.Parameter(self.bias_hh_l0)
+
+    def forward(self, input, hx=None):
+        weight_hh_l0 = torch.nn.functional.dropout(self.weight_hh_l0_raw, p=self.weight_dropout,
+                                                   training=self.training)
+        self.weight_hh_l0 = nn.Parameter(weight_hh_l0)
+
+        if self.drop_bias:
+            bias_hh_l0 = torch.nn.functional.dropout(self.bias_hh_l0_raw, p=self.weight_dropout, training=self.training)
+            self.bias_hh_l0 = nn.Parameter(bias_hh_l0)
+        return super().forward(input, hx)
+
+
 class WordPredictionLSTM(nn.Module):
-    def __init__(self, vocab_size, embedding_dim, hidden_dim, dropout_arr, weight_tying, padding_idx=None):
+    def __init__(self, vocab_size, embedding_dim, hidden_dim, dropout_arr, weight_tying, drop_connect=0.0,
+                 padding_idx=None):
         super(WordPredictionLSTM, self).__init__()
         self.embedding = nn.Embedding(vocab_size, embedding_dim, padding_idx)
 
         self.dropout_embedding_lstm_0 = MyDropout(dropout_arr[0])
 
-        self.lstm_0 = nn.LSTM(embedding_dim, hidden_dim, batch_first=True)
+        if drop_connect == 0:
+            self.lstm_0 = nn.LSTM(embedding_dim, hidden_dim, batch_first=True)
+        else:
+            self.lstm_0 = DropConnectLSTM(embedding_dim, hidden_dim, batch_first=True, weight_dropout=drop_connect)
         self.dropout_lstm_0_lstm_1 = MyDropout(dropout_arr[1])
 
-        self.lstm_1 = nn.LSTM(hidden_dim, hidden_dim, batch_first=True)
+        if drop_connect == 0:
+            self.lstm_1 = nn.LSTM(hidden_dim, hidden_dim, batch_first=True)
+        else:
+            self.lstm_1 = DropConnectLSTM(hidden_dim, hidden_dim, batch_first=True, weight_dropout=drop_connect)
         self.dropout_lstm_1_lstm_2 = MyDropout(dropout_arr[2])
 
-        self.lstm_2 = nn.LSTM(hidden_dim, embedding_dim, batch_first=True)
+        if drop_connect == 0:
+            self.lstm_2 = nn.LSTM(hidden_dim, embedding_dim, batch_first=True)
+        else:
+            self.lstm_2 = DropConnectLSTM(hidden_dim, embedding_dim, batch_first=True, weight_dropout=drop_connect)
         self.dropout_lstm_2_fc = MyDropout(dropout_arr[3])
 
         self.fc = nn.Linear(embedding_dim, vocab_size)
@@ -126,6 +160,8 @@ class Trainer:
         self.dropout_lstm_1_lstm_2 = 0.31
         self.dropout_lstm_2_fc = 0.26
 
+        self.drop_connect = 0.4
+
         self.batch_size = 60
         self.base_seq_len = 70
         self.learning_rate_sgd = 20
@@ -193,6 +229,7 @@ class Trainer:
         params["dropout_arr"].append(self.dropout_lstm_2_fc)
 
         params["weight_tying"] = self.weight_tying
+        params["drop_connect"] = self.drop_connect
 
         model = WordPredictionLSTM(**params)
         model = model.to(self.device)
@@ -229,7 +266,6 @@ class Trainer:
         if param == "decay":
             self.optimizer.param_groups[0]['weight_decay'] = val
             self.decay = val
-
 
     def load_dictionary(self, words_dict_path: pathlib.Path):
         words_dict = dict()
