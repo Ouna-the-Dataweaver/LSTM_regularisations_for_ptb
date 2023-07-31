@@ -30,6 +30,21 @@ def string_to_ids(sentence: str, words_dict: dict, mode="list"):
     return ans
 
 
+class MyDropout(nn.Module):
+    def __init__(self, p: float = 0.5):
+        super(MyDropout, self).__init__()
+        if p < 0 or p > 1:
+            raise Exception(f"dropout {p} not in [0, 1] range")
+        self.p = p
+
+    def forward(self, X):
+        if self.training:
+            X_part_copy = torch.ones_like(X[:, 0:1, :])
+            mask_per_one_in_seq = X_part_copy.bernoulli_(p=(1 - self.p))
+            mask = mask_per_one_in_seq.repeat((1, X.shape[1], 1))
+            return X * mask * (1.0 / (1 - self.p))
+        return X
+
 class DropConnectLSTM(torch.nn.LSTM):
     """
     Customized LSTM with built in dropconnect. Based on PyTorch LSTM
@@ -67,7 +82,7 @@ class EmbeddingWordsDropout(nn.Embedding):
     def generate_mask(self):
         tmp = torch.ones_like(self.weight[:, 0:1])
         tmp = tmp.bernoulli_(p=1 - self.words_dropout)
-        self.dropout_mask = tmp.repeat((1, self.weight.shape[1])) / (1.0 / (1 - self.words_dropout))
+        self.dropout_mask = tmp.repeat((1, self.weight.shape[1])) * (1.0 / (1 - self.words_dropout))
         return None
 
     def forward(self, input):
@@ -84,27 +99,29 @@ class WordPredictionLSTM(nn.Module):
                  padding_idx=None):
         super(WordPredictionLSTM, self).__init__()
         # self.embedding = nn.Embedding(vocab_size, embedding_dim, padding_idx)
-        self.embedding = EmbeddingWordsDropout(vocab_size, embedding_dim, words_dropout=0.1, padding_idx=padding_idx)
+        self.embedding = EmbeddingWordsDropout(vocab_size, embedding_dim, words_dropout=dropout_arr[0], padding_idx=padding_idx)
 
         # no need to dropout this coz we already have dropout input and dropout inside embedding
         # self.dropout_embedding_lstm_0 = MyDropout(dropout_arr[0])
-
+        '''
         if drop_connect == 0:
             self.lstm_0 = nn.LSTM(embedding_dim, hidden_dim, batch_first=True)
-        else:
-            self.lstm_0 = DropConnectLSTM(embedding_dim, hidden_dim, batch_first=True, weight_dropout=drop_connect)
+        else: '''
+        self.lstm_0 = DropConnectLSTM(embedding_dim, hidden_dim, batch_first=True, weight_dropout=drop_connect)
         self.dropout_lstm_0_lstm_1 = MyDropout(dropout_arr[1])
 
+        '''
         if drop_connect == 0:
             self.lstm_1 = nn.LSTM(hidden_dim, hidden_dim, batch_first=True)
-        else:
-            self.lstm_1 = DropConnectLSTM(hidden_dim, hidden_dim, batch_first=True, weight_dropout=drop_connect)
+        else: '''
+        self.lstm_1 = DropConnectLSTM(hidden_dim, hidden_dim, batch_first=True, weight_dropout=drop_connect)
         self.dropout_lstm_1_lstm_2 = MyDropout(dropout_arr[2])
 
+        '''
         if drop_connect == 0:
             self.lstm_2 = nn.LSTM(hidden_dim, embedding_dim, batch_first=True)
-        else:
-            self.lstm_2 = DropConnectLSTM(hidden_dim, embedding_dim, batch_first=True, weight_dropout=drop_connect)
+        else: '''
+        self.lstm_2 = DropConnectLSTM(hidden_dim, embedding_dim, batch_first=True, weight_dropout=drop_connect)
         self.dropout_lstm_2_fc = MyDropout(dropout_arr[3])
 
         self.fc = nn.Linear(embedding_dim, vocab_size)
@@ -150,20 +167,7 @@ class WordPredictionLSTM(nn.Module):
         return logits, [state_0_out, state_1_out, state_2_out], [lstm_2_out, lstm_2_out_dropout]
 
 
-class MyDropout(nn.Module):
-    def __init__(self, p: float = 0.5):
-        super(MyDropout, self).__init__()
-        if p < 0 or p > 1:
-            raise Exception(f"dropout {p} not in [0, 1] range")
-        self.p = p
 
-    def forward(self, X):
-        if self.training:
-            X_part_copy = torch.ones_like(X[:, 0:1, :])
-            mask_per_one_in_seq = X_part_copy.bernoulli_(p=(1 - self.p))
-            mask = mask_per_one_in_seq.repeat((1, X.shape[1], 1))
-            return X * mask * (1.0 / (1 - self.p))
-        return X
 
 
 class Trainer:
@@ -188,21 +192,21 @@ class Trainer:
 
         self.weight_tying = True
 
-        self.dropout_words = 0.2
+        self.dropout_words = 0.2 # 0.4
         self.dropout_emb = 0.1
         self.dropout_lstm_0_lstm_1 = 0.29
         self.dropout_lstm_1_lstm_2 = 0.31
-        self.dropout_lstm_2_fc = 0.26
+        self.dropout_lstm_2_fc = 0.39
 
         self.drop_connect = 0.5
 
         self.batch_size = 60
         self.base_seq_len = 70
         self.learning_rate_sgd = 20
-        self.learning_rate_adam = 8e-3
+        self.learning_rate_adam = 1e-2
         # self.lr = None
         self.max_norm = 1.5
-        self.decay = 1e-6
+        self.decay = 1e-7
 
         self.alpha = 2
         self.beta = 1
@@ -301,6 +305,11 @@ class Trainer:
         if param == "decay":
             self.optimizer.param_groups[0]['weight_decay'] = val
             self.decay = val
+        if param == "drop_connect":
+            self.model.lstm_0.weight_dropout = val
+            self.model.lstm_1.weight_dropout = val
+            self.model.lstm_2.weight_dropout = val
+            self.drop_connect = val
 
     def load_dictionary(self, words_dict_path: pathlib.Path):
         words_dict = dict()
