@@ -54,12 +54,37 @@ class DropConnectLSTM(torch.nn.LSTM):
         return super().forward(input, hx)
 
 
+class Embedding_Words_Dropout(nn.Embedding):
+    """Customized dropout with build in dropout which you can manually call"""
+
+    def __init__(self, *args, words_dropout=0, skip_drops_arr=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.words_dropout = words_dropout
+        self.skip_drops_arr = skip_drops_arr
+        self.dropout_mask = None
+        self.raw_weight = nn.Parameter(self.weight)
+
+    def generate_mask(self):
+        tmp = torch.ones_like(self.weight[:, 0:1])
+        tmp = tmp.bernoulli_(p=1 - self.words_dropout)
+        self.dropout_mask = tmp.repeat((1, self.weight.shape[1])) / (1.0 / (1 - self.words_dropout))
+        return None
+
+    def forward(self, input):
+        if self.training:
+            self.weight = nn.Parameter(self.raw_weight * self.dropout_mask)
+        else:
+            self.weight = nn.Parameter(self.raw_weight)
+
+        return super().forward(input)
+
+
 class WordPredictionLSTM(nn.Module):
     def __init__(self, vocab_size, embedding_dim, hidden_dim, dropout_arr, weight_tying, drop_connect=0.0,
                  padding_idx=None):
         super(WordPredictionLSTM, self).__init__()
-        self.embedding = nn.Embedding(vocab_size, embedding_dim, padding_idx)
-
+        # self.embedding = nn.Embedding(vocab_size, embedding_dim, padding_idx)
+        self.embedding = Embedding_Words_Dropout(vocab_size, embedding_dim, words_dropout=0, padding_idx=padding_idx)
         self.dropout_embedding_lstm_0 = MyDropout(dropout_arr[0])
 
         if drop_connect == 0:
@@ -82,7 +107,9 @@ class WordPredictionLSTM(nn.Module):
 
         self.fc = nn.Linear(embedding_dim, vocab_size)
         if weight_tying:
-            self.fc.weight = self.embedding.weight
+            pass
+            # we're doing this inside forward coz of embedding
+            # self.fc.weight = self.embedding.weight
 
     def forward(self, x, *state_arr):
 
@@ -207,7 +234,6 @@ class Trainer:
         self.training_history_dict["dp_lstm_1_2"] = []
         self.training_history_dict["dp_lstm_2_fc"] = []
         self.training_history_dict["drop_connect"] = []
-
 
     def init_train(self):
         # self.optimizer = optim.SGD(self.model.parameters(), lr=self.learning_rate_sgd, momentum=0.7)
@@ -504,9 +530,10 @@ class Trainer:
             batch_start = True
             train_loss_ce_arr = []
             train_loss_total_arr = []
-            print("Epoch:", epoch+1, end=":")
+            print("Epoch:", epoch + 1, end=":")
             self.model.train()
             progress = [-100, 0]
+            self.model.embedding.generate_mask()
             while True:
                 # printing status of train epoch
                 progress[1] = int(tensor_pos / tensor_len * 100)
