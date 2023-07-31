@@ -54,10 +54,10 @@ class DropConnectLSTM(torch.nn.LSTM):
         return super().forward(input, hx)
 
 
-class Embedding_Words_Dropout(nn.Embedding):
+class EmbeddingWordsDropout(nn.Embedding):
     """Customized dropout with build in dropout which you can manually call"""
 
-    def __init__(self, *args, words_dropout=0, skip_drops_arr=None, **kwargs):
+    def __init__(self, *args, words_dropout=0.0, skip_drops_arr=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.words_dropout = words_dropout
         self.skip_drops_arr = skip_drops_arr
@@ -84,8 +84,10 @@ class WordPredictionLSTM(nn.Module):
                  padding_idx=None):
         super(WordPredictionLSTM, self).__init__()
         # self.embedding = nn.Embedding(vocab_size, embedding_dim, padding_idx)
-        self.embedding = Embedding_Words_Dropout(vocab_size, embedding_dim, words_dropout=0, padding_idx=padding_idx)
-        self.dropout_embedding_lstm_0 = MyDropout(dropout_arr[0])
+        self.embedding = EmbeddingWordsDropout(vocab_size, embedding_dim, words_dropout=0.1, padding_idx=padding_idx)
+
+        # no need to dropout this coz we already have dropout input and dropout inside embedding
+        # self.dropout_embedding_lstm_0 = MyDropout(dropout_arr[0])
 
         if drop_connect == 0:
             self.lstm_0 = nn.LSTM(embedding_dim, hidden_dim, batch_first=True)
@@ -106,10 +108,11 @@ class WordPredictionLSTM(nn.Module):
         self.dropout_lstm_2_fc = MyDropout(dropout_arr[3])
 
         self.fc = nn.Linear(embedding_dim, vocab_size)
-        if weight_tying:
-            pass
-            # we're doing this inside forward coz of embedding
-            # self.fc.weight = self.embedding.weight
+
+        self.weight_tying = weight_tying
+
+        # we're doing this inside forward coz of embedding dropout
+        # self.fc.weight = self.embedding.weight
 
     def forward(self, x, *state_arr):
 
@@ -124,9 +127,9 @@ class WordPredictionLSTM(nn.Module):
 
         embedded = self.embedding(x)
 
-        embedding_lstm_dropout = self.dropout_embedding_lstm_0(embedded)
+        # embedding_lstm_dropout = self.dropout_embedding_lstm_0(embedded)
 
-        lstm_0_out, state_0_out = self.lstm_0(embedding_lstm_dropout, *state_0)
+        lstm_0_out, state_0_out = self.lstm_0(embedded, *state_0)
 
         lstm_0_out_dropout = self.dropout_lstm_0_lstm_1(lstm_0_out)
 
@@ -137,6 +140,10 @@ class WordPredictionLSTM(nn.Module):
         lstm_2_out, state_2_out = self.lstm_2(lstm_1_out_dropout, *state_2)
 
         lstm_2_out_dropout = self.dropout_lstm_2_fc(lstm_2_out)
+
+        if self.weight_tying:
+            # since pointer changes each forward better be safe and override this here
+            self.fc.weight = self.embedding.weight
 
         logits = self.fc(lstm_2_out_dropout)
 
@@ -182,7 +189,7 @@ class Trainer:
         self.weight_tying = True
 
         self.dropout_words = 0.2
-        self.dropout_emb_lstm_0 = 0.15
+        self.dropout_emb = 0.1
         self.dropout_lstm_0_lstm_1 = 0.29
         self.dropout_lstm_1_lstm_2 = 0.31
         self.dropout_lstm_2_fc = 0.26
@@ -251,7 +258,7 @@ class Trainer:
         params["hidden_dim"] = self.hidden_dim
 
         params["dropout_arr"] = []
-        params["dropout_arr"].append(self.dropout_emb_lstm_0)
+        params["dropout_arr"].append(self.dropout_emb)
         params["dropout_arr"].append(self.dropout_lstm_0_lstm_1)
         params["dropout_arr"].append(self.dropout_lstm_1_lstm_2)
         params["dropout_arr"].append(self.dropout_lstm_2_fc)
@@ -268,9 +275,9 @@ class Trainer:
     def set_param(self, param: str, val):
         if param == "dropout_words":
             self.dropout_words = val
-        if param == "dropout_emb_lstm_0":
-            self.model.dropout_embedding_lstm_0.p = val
-            self.dropout_emb_lstm_0 = val
+        if param == "dropout_emb":
+            self.model.embedding.words_dropout = val
+            self.dropout_emb = val
         if param == "dropout_lstm_0_lstm_1":
             self.model.dropout_lstm_0_lstm_1.p = val
             self.dropout_lstm_0_lstm_1 = val
@@ -483,7 +490,7 @@ class Trainer:
             latest_ppl.legend()
 
             dp.plot(x, dp_input, label="dp_input")
-            dp.plot(x, dp_emb_lstm, label="dp_emb_lstm")
+            dp.plot(x, dp_emb_lstm, label="dp_emb")
             dp.plot(x, dp_lstm_0_1, label="dp_lstm_0_1")
             dp.plot(x, dp_lstm_1_2, label="dp_lstm_1_2")
             dp.plot(x, dp_lstm_2_fc, label="dp_lstm_2_fc")
@@ -600,7 +607,7 @@ class Trainer:
 
             self.training_history_dict["dp_input"].append(self.dropout_words)
             # self.training_history_dict["dp_emb"].append()
-            self.training_history_dict["dp_emb_lstm"].append(self.dropout_emb_lstm_0)
+            self.training_history_dict["dp_emb_lstm"].append(self.dropout_emb)
             self.training_history_dict["dp_lstm_0_1"].append(self.dropout_lstm_0_lstm_1)
             self.training_history_dict["dp_lstm_1_2"].append(self.dropout_lstm_1_lstm_2)
             self.training_history_dict["dp_lstm_2_fc"].append(self.dropout_lstm_2_fc)
