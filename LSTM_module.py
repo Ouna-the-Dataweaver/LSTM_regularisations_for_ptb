@@ -193,10 +193,10 @@ class Trainer:
         self.weight_tying = True
 
         self.dropout_words = 0.2 # 0.4
-        self.dropout_emb = 0.0
-        self.dropout_lstm_0_lstm_1 = 0.25
-        self.dropout_lstm_1_lstm_2 = 0.26
-        self.dropout_lstm_2_fc = 0.27
+        self.dropout_emb = 0.1
+        self.dropout_lstm_0_lstm_1 = 0.29
+        self.dropout_lstm_1_lstm_2 = 0.295
+        self.dropout_lstm_2_fc = 0.31
 
         self.drop_connect = 0.4
 
@@ -393,6 +393,7 @@ class Trainer:
 
     def train_step(self, data, target, first_in_batch=True):
         self.optimizer.zero_grad()
+        self.model.embedding.generate_mask()
         if first_in_batch:
             pred, state_arr, last_layer_hidden = self.model(data)
         else:
@@ -551,7 +552,7 @@ class Trainer:
             print("Epoch:", epoch + 1, end=":")
             self.model.train()
             progress = [-100, 0]
-            self.model.embedding.generate_mask()
+
             while True:
                 # printing status of train epoch
                 progress[1] = int(tensor_pos / tensor_len * 100)
