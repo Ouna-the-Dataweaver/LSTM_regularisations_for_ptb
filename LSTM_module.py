@@ -193,15 +193,15 @@ class Trainer:
         self.weight_tying = True
 
         self.dropout_words = 0.2 # 0.4
-        self.dropout_emb = 0.1
+        self.dropout_emb = 0.0
         self.dropout_lstm_0_lstm_1 = 0.29
         self.dropout_lstm_1_lstm_2 = 0.31
-        self.dropout_lstm_2_fc = 0.39
+        self.dropout_lstm_2_fc = 0.3
 
         self.drop_connect = 0.5
 
         self.batch_size = 60
-        self.base_seq_len = 70
+        self.base_seq_len = 75
         self.learning_rate_sgd = 20
         self.learning_rate_adam = 1e-2
         # self.lr = None
@@ -453,9 +453,11 @@ class Trainer:
         return total_loss
 
     def sequence_len_generator(self, cut_in_half=5):
-        ans = random.randint(self.base_seq_len - 10, self.base_seq_len + 10)
+        ans = random.randint(self.base_seq_len - 7, self.base_seq_len + 7)
+
         if random.randint(0, 99) < cut_in_half:
-            ans = ans // 2
+            ans -= 20
+
         return ans
 
     def draw_graph(self, print_graphs):
