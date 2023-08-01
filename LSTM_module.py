@@ -194,11 +194,11 @@ class Trainer:
 
         self.dropout_words = 0.2 # 0.4
         self.dropout_emb = 0.0
-        self.dropout_lstm_0_lstm_1 = 0.29
-        self.dropout_lstm_1_lstm_2 = 0.31
-        self.dropout_lstm_2_fc = 0.3
+        self.dropout_lstm_0_lstm_1 = 0.25
+        self.dropout_lstm_1_lstm_2 = 0.26
+        self.dropout_lstm_2_fc = 0.27
 
-        self.drop_connect = 0.5
+        self.drop_connect = 0.4
 
         self.batch_size = 60
         self.base_seq_len = 75
@@ -456,7 +456,7 @@ class Trainer:
         ans = random.randint(self.base_seq_len - 7, self.base_seq_len + 7)
 
         if random.randint(0, 99) < cut_in_half:
-            ans -= 20
+            ans = ans // 2
 
         return ans
 
